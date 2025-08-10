@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>FixtureIt — Badminton Fixture Generator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#0e1528; --panel:#0f172a; --card:#111a2e;
+    --fg:#e5eaf3; --muted:#9fb0c9; --border:#1f2a44;
+    --accent:#22c55e; --accent-2:#16a34a; --danger:#ef4444;
+    --ring:#60a5fa;
+    --r:12px; --r-sm:10px;
+    --s-1:6px; --s0:10px; --s1:12px; --s2:16px; --s3:20px; --s4:28px;
+    --shadow:0 8px 24px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  html, body { overflow-x: hidden; }
+  body{
+    margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial;
+    color:var(--fg);
+    background: linear-gradient(180deg,#070b16 0%,#0b1020 50%,#0e1528 100%);
+  }
+  .container{max-width:1200px;margin:0 auto;padding:var(--s3) var(--s2);}
+  .header{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s2);}
+  .brand{display:flex;align-items:center;gap:var(--s1)}
+  .logo{width:34px;height:34px;border-radius:10px;background: radial-gradient(100% 100% at 30% 20%, #34d399 0%, #22c55e 40%, #16a34a 100%);box-shadow: 0 6px 18px rgba(34,197,94,.35)}
+  .title-wrap{display:flex;flex-direction:column;gap:2px}
+  .title{font-weight:800;letter-spacing:.2px}
+  .subtitle{color:var(--muted);font-size:12px}
+
+  .btn{background:#121a2f;color:var(--fg);border:1px solid var(--border);padding:10px 14px;border-radius:12px;cursor:pointer;transition:.15s ease;display:inline-flex;align-items:center;gap:8px}
+  .btn:hover{transform:translateY(-1px);border-color:#2a385e}
+  .btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+  .btn-primary{background:linear-gradient(180deg,var(--accent),var(--accent-2));border-color:var(--accent-2);color:#05140c;font-weight:800}
+  .btn-ghost{background:transparent}
+  .btn-block{width:100%;justify-content:center}
+
+  .grid{display:grid;gap:var(--s2);grid-template-columns: 360px 1fr;}
+  @media (max-width: 980px){ .grid{grid-template-columns: 1fr;} }
+
+  .card{background: rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:var(--r);padding:var(--s2);box-shadow: var(--shadow);position:relative;}
+  .left .card{position:sticky; top:16px}
+
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+  input,select,textarea{width:100%; background:#0b1220; color:var(--fg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; outline:none;}
+  input:focus-visible,select:focus-visible,textarea:focus-visible{border-color:#345397; box-shadow:0 0 0 3px rgba(96,165,250,.2)}
+  textarea{min-height:150px;resize:vertical}
+  .hint{color:var(--muted);font-size:12px;margin-top:6px}
+  .row{display:flex;gap:var(--s1);align-items:center;flex-wrap:wrap}
+  .divider{height:1px;background:rgba(255,255,255,.08);margin:var(--s2) 0}
+  .section{display:flex;flex-direction:column;gap:var(--s1)}
+  .section-title{font-size:12px;color:#b8c4db;text-transform:uppercase;letter-spacing:.12em}
+  .control-2col{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1)}
+  @media (max-width:600px){ .control-2col{grid-template-columns:1fr} }
+
+  .tags{display:flex;gap:8px;flex-wrap:wrap}
+  .tag{font-size:12px;color:#a5b4fc;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);padding:4px 8px;border-radius:999px}
+
+  .pill{font-size:12px;background:rgba(148,163,184,.15);color:#cbd5e1;border:1px solid rgba(148,163,184,.25);padding:4px 8px;border-radius:999px}
+
+  /* Table view */
+  table{width:100%;border-collapse:separate;border-spacing:0;margin-top:var(--s1)}
+  thead th{text-align:left;font-weight:700;color:#c9d5eb;background:rgba(255,255,255,.04);position:sticky;top:0;padding:10px;border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:saturate(120%) blur(4px); z-index:2;}
+  tbody td{padding:10px;border-bottom:1px solid rgba(255,255,255,.06);font-size:14px}
+  tbody tr:nth-child(even){background:rgba(255,255,255,.02)}
+  tbody tr:hover{background:rgba(96,165,250,.06)}
+
+  /* View tabs */
+  .tabs{display:flex;gap:6px;align-items:center}
+  .tab{background:transparent;border:1px solid rgba(255,255,255,.16);color:#cdd7ec;padding:6px 10px;border-radius:999px;cursor:pointer;font-size:12px}
+  .tab.active{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.28);color:#fff}
+  .hidden{display:none !important}
+
+  /* Flowchart */
+  .flow-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: auto;          /* internal scroll only */
+    padding: 6px;
+    contain: layout paint;
+  }
+  .flow{display:grid; grid-auto-flow:column; grid-auto-columns: minmax(220px, 280px); gap:16px; align-items:start}
+  .flow-col{display:flex; flex-direction:column; gap:12px}
+  .flow-col .col-title{font-size:12px;color:#c9d5eb;letter-spacing:.08em;text-transform:uppercase}
+  .match-card{background:#0e1528;border:1px solid #22304d;border-radius:12px;padding:10px;min-height:54px;box-shadow:0 6px 16px rgba(0,0,0,.22)}
+  .match-title{font-weight:700}
+  .match-sub{font-size:12px;color:#9fb0c9;margin-top:4px}
+  .bye{opacity:.6}
+  .connector{position:absolute; inset:0; pointer-events:none}
+
+  /* Flowcard meta */
+  .match-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;color:#9fb0c9}
+  .chip{background:rgba(99,102,241,.15);color:#a5b4fc;border:1px solid rgba(99,102,241,.3);padding:2px 6px;border-radius:999px;font-weight:600}
+  .footer{margin: var(--s3) 0;color:var(--muted);font-size:12px;text-align:center}
+  .error{color:var(--danger);font-size:13px;margin-top:8px}
+
+  .actions{display:flex;gap:var(--s1);flex-wrap:wrap}
+  .actions .btn-primary{padding:12px 16px}
+
+  /* Print */
+@media print{
+    @page { size: landscape; margin: 10mm; }
+    body{ background:#fff; color:#000 }
+    .left, .header, .footer, .btn, .hint, .tabs{ display:none !important }
+    .card{ border:none; box-shadow:none; padding:0 }
+    .container{ max-width:none; padding:0 }
+    /* Table: repeat header; allow natural page breaks without dropping rows */
+    table{ width:100%; font-size:12px; page-break-inside:auto; break-inside:auto; -webkit-print-color-adjust:exact; print-color-adjust: exact; }
+    thead{ display: table-header-group; }
+    tfoot{ display: table-footer-group; }
+    tbody{ display: table-row-group !important; break-inside:auto; }
+    tr{ break-inside: avoid; }
+    thead th{ top:auto !important; }
+    /* Ensure no scroll containers clip content */
+    .grid{ display:block !important; grid-template-columns:1fr !important; }
+    .right, .card, #view-table, table, tbody{ overflow: visible !important; height:auto !important; max-height:none !important; }
+    thead th{ position:static; background:#eee; color:#000; border-bottom:1px solid #bbb }
+    tbody td{ border-bottom:1px solid #ddd }
+
+    /* Flow: wrap columns within page width, paginate vertically, hide connectors */
+    #view-flow{ display:block !important; }
+    .flow-wrap{ overflow: visible !important; height:auto !important; max-height:none !important; page-break-inside:auto !important; }
+    .flow{ display:flex !important; flex-wrap:wrap; gap:8px; }
+    .flow-col{ width:260px; page-break-inside: avoid !important; break-inside: avoid; }
+    .match-card{ padding:8px; min-height:40px; page-break-inside: avoid; break-inside: avoid; }
+    .match-title{ font-size:12px }
+    .match-sub{ font-size:11px }
+    .connector{ display:none !important }
+
+    /* Keep round title with first card on the same page */
+    .flow-col .col-title{ page-break-after: avoid; page-break-inside: avoid !important; break-after: avoid-page; }
+  }
+
+  /* Crisp, high-contrast printed connectors */
+  .connector .flow-line{
+    stroke: #334155 !important;          /* dark slate */
+    stroke-opacity: 1 !important;
+    stroke-width: 1.6px !important;
+    fill: none;
+    vector-effect: non-scaling-stroke;   /* keep width when page scales */
+    shape-rendering: geometricPrecision; /* smoother output */
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Ensure the right column can shrink and doesn’t force page overflow */
+  .right { min-width: 0; }
+  .right .card { min-width: 0; }
+
+  /* Flow view should not expand the layout; it scrolls internally */
+ #view-flow { min-width: 0; }
+ .flow-wrap {
+   position: relative;
+   width: 100%;
+   max-width: 100%;
+   min-width: 0;
+   overflow: auto;          /* internal scroll only */
+   padding: 6px;
+   contain: layout paint;
+ }
+
+  /* Let inner grid be as wide as needed; outer wrapper handles scroll */
+  .flow { width: max-content; }
+
+  /* Connectors already absolute; just reaffirm */
+  .connector { position: absolute; inset: 0; pointer-events: none; }
+
+  /* Flowchart round coloring */
+  .flow-col:nth-child(odd) .match-card{ background: rgba(59,130,246,.12); border-color: rgba(59,130,246,.35); }
+  .flow-col:nth-child(even) .match-card{ background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.35); }
+  .match-card.placeholder{ background: rgba(148,163,184,.12); border-color: rgba(148,163,184,.35); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"></div>
+      <div class="title-wrap">
+      <div class="title">FixtureIt — Badminton Fixture Generator</div>
+        <div class="subtitle">Clean, fair schedules with multi‑court and rest constraints</div>
+      </div>
+    </div>
+    <div class="row">
+      <button id="btn-load" class="btn btn-ghost">Load</button>
+      <button id="btn-save" class="btn">Save</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="left">
+      <div class="card">
+        <div class="section">
+          <div class="section-title">Tournament</div>
+          <div>
+            <label for="algorithm">Choose an algorithm</label>
+        <select id="algorithm">
+          <option value="roundrobin">Round-robin</option>
+          <option value="knockout">Knockout (single-elimination)</option>
+        </select>
+          </div>
+          <div id="seeded-wrap" class="row hidden" style="margin-top:-4px;">
+            <label style="display:flex;gap:8px;align-items:center;margin:0;">
+              <input id="seeded" type="checkbox" />
+              Seeded knockout (teams listed as seeds)
+            </label>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="section">
+          <div class="section-title">Participants</div>
+          <div>
+        <label for="teams">Teams / Players (one per line)</label>
+        <textarea id="teams" placeholder="Team A
+Team B
+Team C
+Team D"></textarea>
+            <div class="row" style="justify-content:space-between;">
+              <div class="hint" id="team-hint">Odd count in round‑robin auto-adds a bye. Knockout pads to power of two.</div>
+              <div class="pill" id="team-count">0 teams</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="section">
+          <div class="section-title">Constraints</div>
+          <div class="control-2col">
+            <div>
+            <label for="courts">Courts</label>
+            <input id="courts" type="number" min="1" value="2" />
+          </div>
+            <div>
+            <label for="duration">Match duration (minutes)</label>
+            <input id="duration" type="number" min="5" step="5" value="30" />
+          </div>
+        </div>
+          <div class="control-2col">
+            <div>
+            <label for="rest">Min rest between a team's matches (minutes)</label>
+            <input id="rest" type="number" min="0" step="5" value="30" />
+          </div>
+            <div>
+            <label for="start">Start time</label>
+            <input id="start" type="datetime-local" />
+          </div>
+        </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="actions">
+          <button id="btn-generate" class="btn btn-primary btn-block">Generate Schedule</button>
+          <button id="btn-export" class="btn">Export CSV</button>
+          <button id="btn-pdf" class="btn">Export PDF</button>
+        </div>
+
+        <div id="errors" class="error" role="alert" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div class="pill" id="summary">No schedule generated yet.</div>
+          <div class="row">
+            <div class="tabs" role="tablist" aria-label="View">
+              <button id="tab-table" class="tab active" role="tab" aria-selected="true" aria-controls="view-table">Table</button>
+              <button id="tab-flow" class="tab" role="tab" aria-selected="false" aria-controls="view-flow">Flowchart</button>
+            </div>
+            <button id="btn-print" class="btn" style="margin-left:8px;">Print</button>
+          </div>
+        </div>
+        <div class="row" style="margin-bottom:6px;">
+            <div class="pill" id="algo-pill">—</div>
+            <div class="pill" id="meta-pill">—</div>
+          </div>
+        <div class="tags" style="margin-bottom:8px;">
+          <span class="tag">Round-robin</span>
+          <span class="tag">Knockout</span>
+          <span class="tag">Multi-court</span>
+          <span class="tag">Rest constraints</span>
+          <span class="tag">CSV export</span>
+        </div>
+
+        <!-- Table View -->
+        <div id="view-table">
+          <table aria-describedby="summary">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Round</th>
+              <th>Match</th>
+              <th>Team A</th>
+              <th>Team B</th>
+              <th>Court</th>
+              <th>Start</th>
+              <th>End</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+        <!-- Flowchart View -->
+        <div id="view-flow" class="hidden">
+          <div class="flow-wrap" id="flow-wrap">
+            <svg class="connector" id="flow-svg"></svg>
+            <div class="flow" id="flow"></div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Saved inputs persist in this browser (localStorage).</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Light-weight loader for jsPDF + autotable from CDN when needed
+  function ensurePdfLibsLoaded() {
+    return new Promise((resolve, reject) => {
+      const has = !!(window.jspdf && window.jspdf.jsPDF && (window.jspdf.jsPDF.prototype?.autoTable || window.jspdfAutoTable || window.autoTable));
+      if (has) return resolve();
+      const s1 = document.createElement('script');
+      s1.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+      s1.onload = () => {
+        const s2 = document.createElement('script');
+        s2.src = 'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.3/dist/jspdf.plugin.autotable.min.js';
+        s2.onload = resolve; s2.onerror = reject; document.head.appendChild(s2);
+      };
+      s1.onerror = reject; document.head.appendChild(s1);
+    });
+  }
+  // Utilities
+  const uniqId = (()=>{ let i=1; return () => i++; })();
+  const fmtTime = (d) => new Date(d).toLocaleString();
+  const addMinutes = (d, mins) => new Date(d.getTime() + mins*60000);
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    algorithm: $('algorithm'),
+    seededWrap: $('seeded-wrap'),
+    seeded: $('seeded'),
+    teams: $('teams'),
+    teamCount: $('team-count'),
+    courts: $('courts'),
+    duration: $('duration'),
+    rest: $('rest'),
+    start: $('start'),
+    btnGen: $('btn-generate'),
+    btnExport: $('btn-export'),
+    btnPrint: $('btn-print'),
+    btnSave: $('btn-save'),
+    btnLoad: $('btn-load'),
+    errors: $('errors'),
+    tbody: $('tbody'),
+    summary: $('summary'),
+    algoPill: $('algo-pill'),
+    metaPill: $('meta-pill'),
+    tabTable: $('tab-table'),
+    tabFlow: $('tab-flow'),
+    viewTable: $('view-table'),
+    viewFlow: $('view-flow'),
+    flow: $('flow'),
+    flowWrap: $('flow-wrap'),
+    flowSvg: $('flow-svg'),
+  };
+
+  function parseTeams(input){ return input.split(/\r?\n/).map(s=>s.trim()).filter(Boolean); }
+  function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+  // Round-robin via Circle Method
+  function roundRobinRounds(teams){
+    const list = teams.slice();
+    const hasBye = list.length % 2 === 1;
+    if (hasBye) list.push('BYE');
+    const n = list.length;
+    const rounds = [];
+    for (let r = 0; r < n - 1; r++) {
+      const pairs = [];
+      for (let i = 0; i < n / 2; i++) {
+        const t1 = list[i], t2 = list[n - 1 - i];
+        if (t1 !== 'BYE' && t2 !== 'BYE') pairs.push({ a:t1, b:t2, play:true, label:`R${r+1}-M${i+1}` });
+        else pairs.push({ a:t1, b:t2, play:false, label:`R${r+1}-M${i+1}` });
+      }
+      rounds.push(pairs);
+      const fixed = list[0], rest = list.slice(1); rest.unshift(rest.pop()); list.splice(0, list.length, fixed, ...rest);
+    }
+    return rounds;
+  }
+
+  // Knockout bracket generator
+  function nextPowerOfTwo(x){ let p=1; while(p<x) p<<=1; return p; }
+  function knockoutRounds(teams, seeded=false){
+    const n=teams.length, size=nextPowerOfTwo(n);
+    let entrants = seeded ? teams.slice() : shuffle(teams.slice());
+    while (entrants.length < size) entrants.push('BYE');
+    const r1=[];
+    for (let i=0;i<size;i+=2){
+      const a=entrants[i], b=entrants[i+1];
+      if (a==='BYE' && b==='BYE') continue;
+      r1.push({ a, b, play: !(a==='BYE' || b==='BYE'), label:`R1-M${(i/2)+1}` });
+    }
+    const rounds=[]; rounds.push(r1);
+    let prev=r1, r=2;
+    while(prev.length>1){
+      const cur=[];
+      for(let i=0;i<prev.length;i+=2){
+        const L=prev[i], R=prev[i+1]; if(!R) continue;
+        const aL = L.play ? `Winner of ${L.label}` : (L.a==='BYE'?L.b:L.a);
+        const bL = R.play ? `Winner of ${R.label}` : (R.a==='BYE'?R.b:R.a);
+        cur.push({ a:aL, b:bL, play:true, label:`R${r}-M${(i/2)+1}` });
+      }
+      rounds.push(cur); prev=cur; r++;
+    }
+    return rounds;
+  }
+
+  // Scheduler with rest + multi-court
+  function scheduleMatches(rounds, config, type){
+    const { courts, duration, rest, start } = config;
+    const startTime = new Date(start);
+    const courtNext = Array.from({length:courts}, ()=> new Date(startTime));
+    const teamLast = new Map(); const out=[];
+
+    const canPlayAt = (team, t) => {
+      const last = teamLast.get(team); if(!last) return true;
+      return (t.getTime()-last.getTime())/60000 >= rest;
+    };
+    const assign = (earliest) => {
+      let bestCourt=0, bestTime=null;
+      for (let c=0;c<courts;c++){
+        const t0 = new Date(Math.max(courtNext[c].getTime(), earliest.getTime()));
+        if (bestTime===null || t0<bestTime){ bestTime=t0; bestCourt=c; }
+      }
+      return { court:bestCourt, time:bestTime };
+    };
+
+    if (type==='roundrobin'){
+      const queue=[];
+      rounds.forEach((pairs,i)=> pairs.forEach((p,j)=> { if(p.a!=='BYE' && p.b!=='BYE') queue.push({round:i+1,matchInRound:j+1,a:p.a,b:p.b}); }));
+      let guard=0;
+      while(queue.length && guard++<100000){
+        let placed=false;
+        const earliestTime = new Date(Math.min(...courtNext.map(d=>d.getTime())));
+        for (let idx=0; idx<queue.length; idx++){
+          const m=queue[idx];
+          if (canPlayAt(m.a,earliestTime) && canPlayAt(m.b,earliestTime)){
+            const {court,time}=assign(earliestTime);
+            const end=addMinutes(time,duration);
+            out.push({ id:uniqId(), round:m.round, matchInRound:m.matchInRound, a:m.a, b:m.b, court:court+1, start:new Date(time), end });
+            teamLast.set(m.a,end); teamLast.set(m.b,end); courtNext[court]=new Date(end);
+            queue.splice(idx,1); placed=true; break;
+          }
+        }
+        if(!placed){
+          const k=courtNext.reduce((mi,d,i)=> d<courtNext[mi]?i:mi,0);
+          courtNext[k]=addMinutes(courtNext[k],5);
+        }
+      }
+      if(queue.length) throw new Error('Could not schedule all matches with current constraints.');
+      return out.sort((a,b)=> a.start-b.start || a.court-b.court);
+    }
+
+    if (type==='knockout'){
+      let currentStart = new Date(startTime);
+      for (let r=0;r<rounds.length;r++){
+        const pairs=rounds[r];
+        for (let c=0;c<courts;c++) courtNext[c]=new Date(Math.max(courtNext[c].getTime(), currentStart.getTime()));
+        const queue=[];
+        pairs.forEach((p,j)=>{ if(!(p.play===false || p.a==='BYE' || p.b==='BYE')) queue.push({round:r+1,matchInRound:j+1,a:p.a,b:p.b}); });
+        let guard=0;
+        while(queue.length && guard++<100000){
+          const earliestTime = new Date(Math.min(...courtNext.map(d=>d.getTime())));
+          let placed=false;
+          for (let idx=0; idx<queue.length; idx++){
+            const m=queue[idx];
+            const aCan = !m.a.startsWith('Winner of') ? canPlayAt(m.a,earliestTime) : true;
+            const bCan = !m.b.startsWith('Winner of') ? canPlayAt(m.b,earliestTime) : true;
+            if (aCan && bCan){
+              const {court,time}=assign(earliestTime);
+              const end=addMinutes(time,duration);
+              out.push({ id:uniqId(), round:m.round, matchInRound:m.matchInRound, a:m.a, b:m.b, court:court+1, start:new Date(time), end });
+              if(!m.a.startsWith('Winner of')) teamLast.set(m.a,end);
+              if(!m.b.startsWith('Winner of')) teamLast.set(m.b,end);
+              courtNext[court]=new Date(end);
+              queue.splice(idx,1); placed=true; break;
+            }
+          }
+          if(!placed){
+            const k=courtNext.reduce((mi,d,i)=> d<courtNext[mi]?i:mi,0);
+            courtNext[k]=addMinutes(courtNext[k],5);
+          }
+        }
+        const roundFinish = new Date(Math.max(...courtNext.map(d=>d.getTime())));
+        currentStart = addMinutes(roundFinish, rest);
+      }
+      return out.sort((a,b)=> a.start-b.start || a.court-b.court);
+    }
+
+    throw new Error('Unknown type');
+  }
+
+  function toCSV(rows){
+    const header=['#','Round','Match','Team A','Team B','Court','Start','End'];
+    const lines=[header.join(',')];
+    rows.forEach((r,i)=>{
+      lines.push([i+1,r.round,r.matchInRound,`"${r.a}"`,`"${r.b}"`,r.court,`"${fmtTime(r.start)}"`,`"${fmtTime(r.end)}"`].join(','));
+    });
+    return lines.join('\n');
+  }
+
+  function readConfig(){
+    const teams = parseTeams(el.teams.value);
+    const courts = Math.max(1, parseInt(el.courts.value||'1',10));
+    const duration = Math.max(5, parseInt(el.duration.value||'30',10));
+    const rest = Math.max(0, parseInt(el.rest.value||'30',10));
+    const startVal = el.start.value;
+    return { teams, courts, duration, rest, start: startVal ? new Date(startVal) : new Date(), seeded: el.seeded.checked };
+  }
+
+  function renderTable(rows){
+    el.tbody.innerHTML='';
+    rows.forEach((r,i)=>{
+      const tr=document.createElement('tr');
+      [i+1,r.round,r.matchInRound,r.a,r.b,r.court,fmtTime(r.start),fmtTime(r.end)].forEach(v=>{
+        const td=document.createElement('td'); td.textContent=String(v); tr.appendChild(td);
+      });
+      el.tbody.appendChild(tr);
+    });
+  }
+
+  function setSummary(rows,type,cfg,teamsCount){
+    if(!rows.length){ el.summary.textContent='No schedule generated yet.'; el.algoPill.textContent='—'; el.metaPill.textContent='—'; return; }
+    const first=rows[0]?.start, last=rows[rows.length-1]?.end;
+    const totalMins=Math.round((last-first)/60000);
+    el.summary.textContent=`${rows.length} matches • ~${totalMins} mins • ${cfg.courts} court(s)`;
+    el.algoPill.textContent = type==='roundrobin' ? 'Round-robin' : 'Knockout';
+    el.metaPill.textContent = `${teamsCount} teams • ${cfg.duration}m/match • ${cfg.rest}m rest`;
+  }
+
+  function groupRowsByRound(rows){
+    const map=new Map();
+    rows.forEach(r=>{
+      if(!map.has(r.round)) map.set(r.round, []);
+      map.get(r.round).push(r);
+    });
+    [...map.values()].forEach(list=>list.sort((a,b)=>a.start-b.start));
+    return map;
+  }
+
+  // Flowchart rendering
+  function renderFlowchart(structureRounds, rows, type){
+    el.flow.innerHTML='';
+    el.flowSvg.innerHTML='';
+
+    const rowsByRound = groupRowsByRound(rows||[]);
+    const cardRefs = [];
+
+    // Build columns and cards
+    structureRounds.forEach((round, idx)=>{
+      const col=document.createElement('div'); col.className='flow-col';
+      const title=document.createElement('div'); title.className='col-title';
+      title.textContent = type==='roundrobin'
+        ? `Round ${idx+1}`
+        : (idx===structureRounds.length-1?'Final': idx===structureRounds.length-2?'Semifinals': idx===0?'Round of '+ (round.length*2): `Round ${idx+1}`);
+      col.appendChild(title);
+
+      const refs=[];
+      round.forEach((m, j)=>{
+        if (type==='roundrobin' && (m.a==='BYE' || m.b==='BYE')) return;
+        const card=document.createElement('div'); card.className='match-card'; if(m.play===false) card.classList.add('bye');
+        // mark placeholder (unknown entrants)
+        if (type==='knockout' && ((m.a && String(m.a).startsWith('Winner of')) || (m.b && String(m.b).startsWith('Winner of')))) {
+          card.classList.add('placeholder');
+        }
+
+        // meta row with round/match info
+        const meta=document.createElement('div'); meta.className='match-meta';
+        const label = m.label || `R${idx+1}-M${j+1}`;
+        meta.innerHTML = `<span class="chip">${label}</span><span>Round ${idx+1} • Match ${j+1}</span>`;
+        card.appendChild(meta);
+
+        const head=document.createElement('div'); head.className='match-title';
+        head.textContent = (m.a||'') + ' vs ' + (m.b||'');
+        const sub=document.createElement('div'); sub.className='match-sub';
+        const scheduled = (rowsByRound.get(idx+1)||[]).find(rw=> rw.a===m.a && rw.b===m.b);
+        sub.textContent = scheduled ? `Court ${scheduled.court} • ${fmtTime(scheduled.start)}` : (type==='knockout' && idx>0 ? 'TBD' : (m.play===false?'BYE':''));
+        card.appendChild(head); card.appendChild(sub);
+        col.appendChild(card); refs.push(card);
+      });
+
+      el.flow.appendChild(col);
+      cardRefs.push(refs);
+    });
+
+    // Size SVG to the full scroll area of the wrapper
+    const contentW = Math.max(el.flowWrap.scrollWidth, el.flowWrap.clientWidth);
+    const contentH = Math.max(el.flowWrap.scrollHeight, el.flowWrap.clientHeight);
+    el.flowSvg.setAttribute('width', contentW);
+    el.flowSvg.setAttribute('height', contentH);
+    el.flowSvg.setAttribute('viewBox', `0 0 ${contentW} ${contentH}`);
+    el.flowSvg.style.width = contentW + 'px';
+    el.flowSvg.style.height = contentH + 'px';
+    // keep overlay pinned to the wrap (CSS .connector { inset: 0 })
+    el.flowSvg.style.left = el.flow.offsetLeft + 'px';
+    el.flowSvg.style.top = el.flow.offsetTop + 'px';
+
+    if (type!=='knockout') return; // connectors only for knockout
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const wrapRect = el.flowWrap.getBoundingClientRect();
+    const scrollX = el.flowWrap.scrollLeft;
+    const scrollY = el.flowWrap.scrollTop;
+
+    // Coordinates relative to wrap content origin
+    const pointRight = (node) => {
+      const r = node.getBoundingClientRect();
+      const x = (r.right - wrapRect.left) + scrollX;
+      const y = (r.top - wrapRect.top) + scrollY + r.height/2;
+      return {x, y};
+    };
+    const pointLeft = (node) => {
+      const r = node.getBoundingClientRect();
+      const x = (r.left - wrapRect.left) + scrollX;
+      const y = (r.top - wrapRect.top) + scrollY + r.height/2;
+      return {x, y};
+    };
+    const pathFor = (x1,y1,x2,y2) => {
+      if (PRINTING) {
+        const xm = (x1 + x2) / 2; // elbow in the middle for clarity
+        return `M ${x1} ${y1} L ${xm} ${y1} L ${xm} ${y2} L ${x2} ${y2}`;
+      } else {
+        const dx = Math.max(40, Math.abs(x2-x1)/2);
+        return `M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`;
+      }
+    };
+
+    for (let r=0; r<cardRefs.length-1; r++){
+      const srcList = cardRefs[r];
+      const dstList = cardRefs[r+1];
+      for (let i=0; i<srcList.length; i+=2){
+        const a = srcList[i];
+        const b = srcList[i+1];
+        const dest = dstList[Math.floor(i/2)];
+        if (!a || !dest) continue;
+
+        const A = pointRight(a);
+        const D = pointLeft(dest);
+        const p1 = document.createElementNS(ns,'path');
+        p1.setAttribute('class','flow-line');
+        p1.setAttribute('d', pathFor(A.x, A.y, D.x, D.y));
+        p1.setAttribute('fill','none');
+        p1.setAttribute('stroke','rgba(148,163,184,0.55)');
+        p1.setAttribute('stroke-width','2');
+        p1.setAttribute('stroke-linecap','round');
+        p1.setAttribute('stroke-linejoin','round');
+        p1.setAttribute('vector-effect','non-scaling-stroke');
+        el.flowSvg.appendChild(p1);
+
+        if (b){
+          const B = pointRight(b);
+          const p2 = document.createElementNS(ns,'path');
+          p2.setAttribute('class','flow-line');
+          p2.setAttribute('d', pathFor(B.x, B.y, D.x, D.y));
+          p2.setAttribute('fill','none');
+          p2.setAttribute('stroke','rgba(148,163,184,0.55)');
+          p2.setAttribute('stroke-width','2');
+          p2.setAttribute('stroke-linecap','round');
+          p2.setAttribute('stroke-linejoin','round');
+          p2.setAttribute('vector-effect','non-scaling-stroke');
+          el.flowSvg.appendChild(p2);
+        }
+      }
+    }
+  }
+
+  function saveState(){
+    const data={
+      algorithm: el.algorithm.value,
+      teams: el.teams.value,
+      courts: el.courts.value,
+      duration: el.duration.value,
+      rest: el.rest.value,
+      start: el.start.value,
+      seeded: el.seeded.checked,
+    };
+    localStorage.setItem('fixtureit_state', JSON.stringify(data));
+  }
+  function loadState(){
+    const raw=localStorage.getItem('fixtureit_state'); if(!raw) return;
+    try{
+      const d=JSON.parse(raw);
+      el.algorithm.value=d.algorithm||'roundrobin';
+      el.teams.value=d.teams||'';
+      el.courts.value=d.courts||'2';
+      el.duration.value=d.duration||'30';
+      el.rest.value=d.rest||'30';
+      el.start.value=d.start||'';
+      el.seeded.checked=!!d.seeded;
+    }catch{}
+  }
+
+  // Live UX helpers
+  function updateTeamCount(){
+    const n=parseTeams(el.teams.value).length;
+    el.teamCount.textContent = `${n} ${n===1?'team':'teams'}`;
+  }
+  function toggleSeeded(){
+    const isKO = el.algorithm.value==='knockout';
+    el.seededWrap.classList.toggle('hidden', !isKO);
+  }
+  function setView(view){
+    const isTable = view==='table';
+    el.viewTable.classList.toggle('hidden', !isTable);
+    el.viewFlow.classList.toggle('hidden', isTable);
+    el.tabTable.classList.toggle('active', isTable);
+    el.tabFlow.classList.toggle('active', !isTable);
+    el.tabTable.setAttribute('aria-selected', String(isTable));
+    el.tabFlow.setAttribute('aria-selected', String(!isTable));
+  }
+
+  // Events
+  let lastRows=[], lastType='roundrobin', lastCfg=null, lastTeamsCount=0, lastStructure=[];
+  let PRINTING = false;
+  el.btnGen.addEventListener('click', ()=>{
+    el.errors.textContent='';
+    try{
+      const cfg=readConfig();
+      if (cfg.teams.length<2) throw new Error('Enter at least two teams.');
+      const type=el.algorithm.value;
+      const teamsCount=cfg.teams.length;
+
+      const structure = type==='roundrobin' ? (cfg.teams)
+                      : type==='knockout' ? knockoutRounds(cfg.teams,cfg.seeded)
+                      : (()=>{throw new Error('Unknown format.')})();
+
+      const rows=scheduleMatches(structure,{courts:cfg.courts,duration:cfg.duration,rest:cfg.rest,start:cfg.start},type);
+
+      lastRows=rows; lastType=type; lastCfg=cfg; lastTeamsCount=teamsCount; lastStructure=structure;
+
+      renderTable(rows);
+      renderFlowchart(structure, rows, type);
+      setSummary(rows,type,cfg,teamsCount);
+      saveState();
+    } catch (e){
+      el.errors.textContent = e.message || String(e);
+      lastRows=[]; renderTable([]); setSummary([], '', {}, 0);
+      el.flow.innerHTML=''; el.flowSvg.innerHTML='';
+    }
+  });
+
+  el.tabTable.addEventListener('click', ()=> setView('table'));
+  el.tabFlow.addEventListener('click', ()=> {
+    setView('flow');
+    if (lastStructure.length) renderFlowchart(lastStructure, lastRows, lastType);
+  });
+
+  el.btnExport.addEventListener('click', ()=>{
+    if(!lastRows.length){ el.errors.textContent='Generate a schedule first.'; return; }
+    el.errors.textContent='';
+    const csv=toCSV(lastRows);
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='fixtureit_schedule.csv'; a.click(); URL.revokeObjectURL(url);
+  });
+
+  // Export PDF using jsPDF + autoTable
+  async function exportPDF(){
+    if(!lastRows.length){ el.errors.textContent='Generate a schedule first.'; return; }
+    el.errors.textContent='';
+    try{
+      await ensurePdfLibsLoaded();
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
+
+      const title = (el.algoPill.textContent || 'Schedule') + ' — ' + (new Date()).toLocaleString();
+      doc.setFontSize(14); doc.text('FixtureIt — Badminton Fixture Generator', 40, 36);
+      doc.setFontSize(10); doc.text(title, 40, 52);
+
+      const head = [['#','Round','Match','Team A','Team B','Court','Start','End']];
+      const body = lastRows.map((r,i)=>[
+        i+1, r.round, r.matchInRound, r.a, r.b, r.court, new Date(r.start).toLocaleString(), new Date(r.end).toLocaleString()
+      ]);
+
+      // Support different attach points depending on build
+      const autoTable = (doc).autoTable ? (opts)=>doc.autoTable(opts) : (window.jspdfAutoTable || window.autoTable);
+      if (!autoTable) throw new Error('autoTable plugin not available');
+      autoTable({
+        head,
+        body,
+        startY: 64,
+        styles: { fontSize: 9, cellPadding: 4 },
+        headStyles: { fillColor: [238,238,238], textColor: 0 },
+        alternateRowStyles: { fillColor: [248,248,248] },
+        theme: 'grid',
+        margin: { left: 36, right: 36 },
+        didDrawPage: (data) => {
+          const pageNumber = doc.getNumberOfPages();
+          doc.setFontSize(9);
+          doc.text(`Page ${pageNumber}`, data.settings.margin.left, doc.internal.pageSize.getHeight() - 12);
+        },
+      });
+
+      doc.save('fixtureit_schedule.pdf');
+    } catch (e){
+      el.errors.textContent = 'PDF export failed. ' + (e.message||e);
+    }
+  }
+  document.getElementById('btn-pdf').addEventListener('click', exportPDF);
+  el.btnPrint.addEventListener('click', ()=> window.print());
+  el.btnSave.addEventListener('click', ()=> saveState());
+  el.btnLoad.addEventListener('click', ()=> { loadState(); updateTeamCount(); toggleSeeded(); });
+
+  el.teams.addEventListener('input', updateTeamCount);
+  el.algorithm.addEventListener('change', toggleSeeded);
+
+  // Defaults
+  loadState();
+  if(!el.start.value){
+    const now=new Date(); now.setMinutes(now.getMinutes()-now.getTimezoneOffset());
+    el.start.value=now.toISOString().slice(0,16);
+  }
+  if(!el.teams.value.trim()) el.teams.value=['Team A','Team B','Team C','Team D'].join('\n');
+  updateTeamCount();
+  toggleSeeded();
+  setView('table');
+
+  window.addEventListener('resize', ()=>{
+    if (!el.viewFlow.classList.contains('hidden') && lastStructure.length){
+      renderFlowchart(lastStructure, lastRows, lastType);
+    }
+  });
+
+  window.addEventListener('beforeprint', ()=>{
+    PRINTING = true;
+    if (!el.viewFlow.classList.contains('hidden') && lastStructure.length){
+      // force reflow before measuring
+      void el.flowWrap.offsetHeight;
+      renderFlowchart(lastStructure, lastRows, lastType);
+    }
+  });
+
+  window.addEventListener('afterprint', ()=>{
+    PRINTING = false;
+    if (lastStructure.length){
+      renderFlowchart(lastStructure, lastRows, lastType);
+    }
+    document.body.classList.remove('print-mode-flow', 'print-mode-table');
+  });
+</script>
+</body>
+</html>
