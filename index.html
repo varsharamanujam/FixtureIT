@@ -124,8 +124,8 @@
     /* Flow: wrap columns within page width, paginate vertically, hide connectors */
     #view-flow{ display:block !important; }
     .flow-wrap{ overflow: visible !important; height:auto !important; max-height:none !important; page-break-inside:auto !important; }
-    .flow{ display:flex !important; flex-wrap:wrap; gap:8px; }
-    .flow-col{ width:260px; page-break-inside: avoid !important; break-inside: avoid; }
+    .flow{ display:flex !important; flex-wrap:wrap; gap:12px; }
+    .flow-col{ width:280px; page-break-inside: avoid !important; break-inside: avoid; }
     .match-card{ padding:8px; min-height:40px; page-break-inside: avoid; break-inside: avoid; }
     .match-title{ font-size:12px }
     .match-sub{ font-size:11px }
@@ -135,14 +135,13 @@
     .flow-col .col-title{ page-break-after: avoid; page-break-inside: avoid !important; break-after: avoid-page; }
   }
 
-  /* Crisp, high-contrast printed connectors */
+  /* Connector styling */
   .connector .flow-line{
-    stroke: #334155 !important;          /* dark slate */
-    stroke-opacity: 1 !important;
-    stroke-width: 1.6px !important;
+    stroke: rgba(148,163,184,0.65);
+    stroke-width: 2px;
     fill: none;
-    vector-effect: non-scaling-stroke;   /* keep width when page scales */
-    shape-rendering: geometricPrecision; /* smoother output */
+    vector-effect: non-scaling-stroke;
+    shape-rendering: geometricPrecision;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
@@ -258,8 +257,6 @@ Team D"></textarea>
 
         <div class="actions">
           <button id="btn-generate" class="btn btn-primary btn-block">Generate Schedule</button>
-          <button id="btn-export" class="btn">Export CSV</button>
-          <button id="btn-pdf" class="btn">Export PDF</button>
         </div>
 
         <div id="errors" class="error" role="alert" aria-live="polite"></div>
@@ -271,11 +268,19 @@ Team D"></textarea>
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;">
           <div class="pill" id="summary">No schedule generated yet.</div>
           <div class="row">
-            <div class="tabs" role="tablist" aria-label="View">
-              <button id="tab-table" class="tab active" role="tab" aria-selected="true" aria-controls="view-table">Table</button>
-              <button id="tab-flow" class="tab" role="tab" aria-selected="false" aria-controls="view-flow">Flowchart</button>
+            <div class="tabs" role="tablist" aria-label="View toggle between table and flowchart">
+              <span class="toggle-label" style="color:#9fb0c9;font-size:12px;margin-right:6px;">View:</span>
+              <button id="tab-table" class="tab active" role="tab" aria-selected="true" aria-controls="view-table" title="Table – detailed list of all scheduled matches">Table</button>
+              <button id="tab-flow" class="tab" role="tab" aria-selected="false" aria-controls="view-flow" title="Flowchart – rounds/bracket layout">Flowchart</button>
             </div>
-            <button id="btn-print" class="btn" style="margin-left:8px;">Print</button>
+            <button id="btn-flow-download" class="btn" style="margin-left:8px;" title="Download flowchart as JPEG image">Download Flowchart</button>
+            <div style="position:relative;">
+              <button id="btn-table-download" class="btn" title="Download schedule table">Download Table</button>
+              <div id="table-menu" class="hidden" style="position:absolute; right:0; top:36px; background:#0b1220; border:1px solid #1f2937; border-radius:8px; padding:6px; z-index:5; min-width:140px;">
+                <button id="btn-table-pdf" class="btn" style="width:100%; margin:2px 0;">PDF</button>
+                <button id="btn-table-csv" class="btn" style="width:100%; margin:2px 0;">CSV</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="row" style="margin-bottom:6px;">
@@ -337,6 +342,109 @@ Team D"></textarea>
       };
       s1.onerror = reject; document.head.appendChild(s1);
     });
+  }
+
+  // Loader for svg2pdf (vector export of flowchart)
+  function ensureSvg2PdfLoaded(){
+    return new Promise((resolve, reject)=>{
+      const has = !!(window.svg2pdf || (window.svg2pdf && window.svg2pdf.default));
+      if (has) return resolve();
+      const s=document.createElement('script');
+      // Try plain UMD first; fallback to non-UMD build naming
+      const candidates = [
+        'https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.4/dist/svg2pdf.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.4/dist/svg2pdf.min.js'
+      ];
+      let idx = 0;
+      const tryNext = () => {
+        if (idx >= candidates.length) { reject(new Error('svg2pdf failed to load')); return; }
+        s.src = candidates[idx++];
+        s.onload = () => resolve();
+        s.onerror = tryNext;
+        document.head.appendChild(s);
+      };
+      tryNext();
+    });
+  }
+
+  // Build a single SVG that represents the current flow view (cards + connectors)
+  function buildFlowSvg(){
+    const contentW = Math.max(el.flowWrap.scrollWidth, el.flowWrap.clientWidth);
+    const contentH = Math.max(el.flowWrap.scrollHeight, el.flowWrap.clientHeight);
+    const contentRect = el.flow.getBoundingClientRect();
+    const scrollX = el.flowWrap.scrollLeft, scrollY = el.flowWrap.scrollTop;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns,'svg');
+    svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    svg.setAttribute('width', String(contentW));
+    svg.setAttribute('height', String(contentH));
+    svg.setAttribute('viewBox', `0 0 ${contentW} ${contentH}`);
+
+    // No connectors in exported SVG by design (clean bracket cards only)
+
+    // Draw cards as rounded rects + text
+    const cards = el.flow.querySelectorAll('.match-card');
+    cards.forEach(card=>{
+      const r = card.getBoundingClientRect();
+      const x = (r.left - contentRect.left) + scrollX;
+      const y = (r.top - contentRect.top) + scrollY;
+      const w = r.width; const h = r.height;
+      const rect = document.createElementNS(ns,'rect');
+      rect.setAttribute('x', x); rect.setAttribute('y', y); rect.setAttribute('width', w); rect.setAttribute('height', h);
+      rect.setAttribute('rx','10'); rect.setAttribute('ry','10');
+      rect.setAttribute('fill', getComputedStyle(card).backgroundColor || '#eef2ff');
+      rect.setAttribute('stroke', '#93c5fd'); rect.setAttribute('stroke-width','1');
+      svg.appendChild(rect);
+
+      const meta = card.querySelector('.match-meta .chip');
+      const title = card.querySelector('.match-title');
+      const sub = card.querySelector('.match-sub');
+
+      const addText = (text, tx, ty, size=11, weight='normal')=>{
+        const t = document.createElementNS(ns,'text');
+        t.setAttribute('x', tx);
+        t.setAttribute('y', ty);
+        t.setAttribute('font-size', String(size));
+        t.setAttribute('font-family', 'Helvetica, Arial, sans-serif');
+        if (weight==='bold') t.setAttribute('font-weight','bold');
+        t.setAttribute('fill', '#0f172a');
+        t.textContent = text || '';
+        svg.appendChild(t);
+      };
+
+      // simple text wrapping utility for SVG
+      const wrap = (text, maxWidth, lineHeight, size, weight) => {
+        const words = (text||'').split(/\s+/);
+        let line = '';
+        const lines = [];
+        const measure = (s)=> s.length * (size*0.6); // rough width estimate
+        for (let i=0;i<words.length;i++){
+          const trial = line ? line + ' ' + words[i] : words[i];
+          if (measure(trial) > maxWidth && line){ lines.push(line); line = words[i]; }
+          else line = trial;
+        }
+        if (line) lines.push(line);
+        return lines;
+      };
+
+      const PAD = 10;
+      let cursorY = y + PAD + 10;
+      const maxW = w - PAD*2;
+      if (meta) {
+        const lines = wrap(meta.textContent.trim(), maxW, 12, 10);
+        lines.forEach((ln)=>{ addText(ln, x+PAD, cursorY, 10); cursorY += 12; });
+      }
+      if (title){
+        const lines = wrap(title.textContent.trim(), maxW, 14, 12);
+        lines.forEach((ln)=>{ addText(ln, x+PAD, cursorY, 12, 'bold'); cursorY += 16; });
+      }
+      if (sub){
+        const lines = wrap(sub.textContent.trim(), maxW, 12, 10);
+        lines.forEach((ln)=>{ addText(ln, x+PAD, cursorY, 10); cursorY += 12; });
+      }
+    });
+
+    return { svg, width: contentW, height: contentH };
   }
   // Utilities
   const uniqId = (()=>{ let i=1; return () => i++; })();
@@ -738,7 +846,7 @@ Team D"></textarea>
       const type=el.algorithm.value;
       const teamsCount=cfg.teams.length;
 
-      const structure = type==='roundrobin' ? (cfg.teams)
+      const structure = type==='roundrobin' ? roundRobinRounds(cfg.teams)
                       : type==='knockout' ? knockoutRounds(cfg.teams,cfg.seeded)
                       : (()=>{throw new Error('Unknown format.')})();
 
@@ -763,7 +871,8 @@ Team D"></textarea>
     if (lastStructure.length) renderFlowchart(lastStructure, lastRows, lastType);
   });
 
-  el.btnExport.addEventListener('click', ()=>{
+  // Old CSV button replaced by menu
+  document.getElementById('btn-table-csv').addEventListener('click', ()=>{
     if(!lastRows.length){ el.errors.textContent='Generate a schedule first.'; return; }
     el.errors.textContent='';
     const csv=toCSV(lastRows);
@@ -772,50 +881,220 @@ Team D"></textarea>
     const a=document.createElement('a'); a.href=url; a.download='fixtureit_schedule.csv'; a.click(); URL.revokeObjectURL(url);
   });
 
-  // Export PDF using jsPDF + autoTable
-  async function exportPDF(){
+  // Export PDF using jsPDF + autoTable (Table only)
+  async function exportTablePDF(){
     if(!lastRows.length){ el.errors.textContent='Generate a schedule first.'; return; }
     el.errors.textContent='';
     try{
       await ensurePdfLibsLoaded();
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
-
       const title = (el.algoPill.textContent || 'Schedule') + ' — ' + (new Date()).toLocaleString();
       doc.setFontSize(14); doc.text('FixtureIt — Badminton Fixture Generator', 40, 36);
       doc.setFontSize(10); doc.text(title, 40, 52);
-
       const head = [['#','Round','Match','Team A','Team B','Court','Start','End']];
-      const body = lastRows.map((r,i)=>[
-        i+1, r.round, r.matchInRound, r.a, r.b, r.court, new Date(r.start).toLocaleString(), new Date(r.end).toLocaleString()
-      ]);
-
-      // Support different attach points depending on build
+      const body = lastRows.map((r,i)=>[ i+1, r.round, r.matchInRound, r.a, r.b, r.court, new Date(r.start).toLocaleString(), new Date(r.end).toLocaleString() ]);
       const autoTable = (doc).autoTable ? (opts)=>doc.autoTable(opts) : (window.jspdfAutoTable || window.autoTable);
       if (!autoTable) throw new Error('autoTable plugin not available');
-      autoTable({
-        head,
-        body,
-        startY: 64,
-        styles: { fontSize: 9, cellPadding: 4 },
-        headStyles: { fillColor: [238,238,238], textColor: 0 },
-        alternateRowStyles: { fillColor: [248,248,248] },
-        theme: 'grid',
-        margin: { left: 36, right: 36 },
-        didDrawPage: (data) => {
-          const pageNumber = doc.getNumberOfPages();
-          doc.setFontSize(9);
-          doc.text(`Page ${pageNumber}`, data.settings.margin.left, doc.internal.pageSize.getHeight() - 12);
-        },
+      autoTable({ head, body, startY: 64, styles:{ fontSize:9, cellPadding:4 }, headStyles:{ fillColor:[238,238,238], textColor:0 }, alternateRowStyles:{ fillColor:[248,248,248] }, theme:'grid', margin:{ left:36, right:36 }, didDrawPage:(data)=>{ const pg=doc.getNumberOfPages(); doc.setFontSize(9); doc.text(`Page ${pg}`, data.settings.margin.left, doc.internal.pageSize.getHeight()-12); } });
+      doc.save('fixtureit_schedule.pdf');
+    } catch (e){ el.errors.textContent = 'PDF export failed. ' + (e.message||e); }
+  }
+
+  // Export Flowchart PDF (vector) regardless of active tab
+  async function exportFlowPDF(){
+    if(!lastRows.length){ el.errors.textContent='Generate a schedule first.'; return; }
+    el.errors.textContent='';
+    // Export flowchart as vector PDF regardless of active tab by measuring flow DOM
+    try{
+      await ensurePdfLibsLoaded();
+      const wasHidden = el.viewFlow.classList.contains('hidden');
+      const prevInline = el.viewFlow.getAttribute('style') || '';
+      if (wasHidden){
+        el.viewFlow.classList.remove('hidden');
+        el.viewFlow.style.position='absolute';
+        el.viewFlow.style.left='-10000px';
+        el.viewFlow.style.top='-10000px';
+        el.viewFlow.style.visibility='hidden';
+        renderFlowchart(lastStructure, lastRows, lastType);
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+
+      // Measure content
+      const contentRect = el.flow.getBoundingClientRect();
+      const contentW = Math.max(el.flowWrap.scrollWidth, el.flowWrap.clientWidth);
+      const contentH = Math.max(el.flowWrap.scrollHeight, el.flowWrap.clientHeight);
+      const scale = Math.min(pageW / contentW, pageH / contentH);
+      const offsetX = (pageW - contentW * scale) / 2;
+      const offsetY = (pageH - contentH * scale) / 2;
+      const scrollX = el.flowWrap.scrollLeft, scrollY = el.flowWrap.scrollTop;
+
+      const toPt = (x) => x * scale;
+      const px = (v) => v; // input in px
+
+      // Parse css rgb/rgba and blend with white based on alpha to approximate UI translucency
+      const parseColor = (str)=>{
+        const m = String(str).match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([0-9\.]+))?\)/i);
+        if (!m) return { r:238, g:238, b:238, a:1 };
+        return { r: parseInt(m[1],10), g: parseInt(m[2],10), b: parseInt(m[3],10), a: m[4]!==undefined ? parseFloat(m[4]) : 1 };
+      };
+      const blendOnWhite = ({r,g,b,a})=>({
+        r: Math.round(r*a + 255*(1-a)),
+        g: Math.round(g*a + 255*(1-a)),
+        b: Math.round(b*a + 255*(1-a))
       });
 
-      doc.save('fixtureit_schedule.pdf');
-    } catch (e){
-      el.errors.textContent = 'PDF export failed. ' + (e.message||e);
-    }
+      // Draw cards
+      const cols = Array.from(el.flow.querySelectorAll('.flow-col'));
+      const colCards = cols.map(c=> Array.from(c.querySelectorAll('.match-card')));
+      const measured = new Map();
+      const PAD = 14;
+      colCards.forEach(cards=>{
+        cards.forEach(card=>{
+          const r = card.getBoundingClientRect();
+          const x = (r.left - contentRect.left) + scrollX;
+          const y = (r.top - contentRect.top) + scrollY;
+          const w = r.width; const h = r.height;
+          const styles = getComputedStyle(card);
+          const bgCol = blendOnWhite(parseColor(styles.backgroundColor));
+          const brCol = parseColor(styles.borderColor);
+          doc.setDrawColor(brCol.r, brCol.g, brCol.b);
+          doc.setFillColor(bgCol.r, bgCol.g, bgCol.b);
+          const rx = Math.max(6, 8 * scale);
+
+          // Measure text to decide dynamic height
+          const PADpt = toPt(px(PAD));
+          const textWidthPt = toPt(px(w - PAD*2));
+          const metaChip = card.querySelector('.match-meta .chip');
+          const titleEl = card.querySelector('.match-title');
+          const subEl = card.querySelector('.match-sub');
+          const metaLines = metaChip ? doc.splitTextToSize(metaChip.textContent.trim(), textWidthPt).length : 0;
+          const titleLines = titleEl ? doc.splitTextToSize(titleEl.textContent.trim(), textWidthPt).length : 0;
+          const subLines = subEl ? doc.splitTextToSize(subEl.textContent.trim(), textWidthPt).length : 0;
+          const metaLH = 12, titleLH = 14, subLH = 12; // in pt
+          const contentHeightPt = PADpt + metaLines*metaLH + titleLines*titleLH + subLines*subLH + PADpt + 4;
+          const domHPt = toPt(px(h));
+          const rectHPt = Math.max(domHPt, contentHeightPt);
+          measured.set(card, { x, y, w, rectHPt });
+
+          doc.roundedRect(offsetX + toPt(px(x)), offsetY + toPt(px(y)), toPt(px(w)), rectHPt, rx, rx, 'FD');
+
+          // Text
+          let cy = offsetY + toPt(px(y)) + PADpt;
+          const leftX = offsetX + toPt(px(x + PAD));
+          const textWidth = textWidthPt;
+          doc.setTextColor(17,24,39); // near-black for readability
+          doc.setFont('helvetica','normal');
+          doc.setFontSize(9);
+          if (metaChip){
+            let meta = metaChip.textContent.trim();
+            const metaArr = doc.splitTextToSize(meta, textWidth);
+            doc.text(metaArr, leftX, cy);
+            cy += metaLH * metaArr.length;
+          }
+          if (titleEl){
+            doc.setFont('helvetica','bold'); doc.setFontSize(11);
+            const ttl = titleEl.textContent.trim();
+            const lines = doc.splitTextToSize(ttl, textWidth);
+            doc.text(lines, leftX, cy);
+            cy += titleLH * lines.length;
+          }
+          doc.setFont('helvetica','normal'); doc.setFontSize(9);
+          if (subEl){
+            doc.setTextColor(71,85,105); // slate
+            const sub = subEl.textContent.trim();
+            const lines2 = doc.splitTextToSize(sub, textWidth);
+            doc.text(lines2, leftX, cy);
+            doc.setTextColor(17,24,39);
+          }
+        });
+      });
+
+      // Draw orthogonal connectors between columns (every 2 cards -> 1 next column card)
+      // Style for connectors in PDF export
+      doc.setDrawColor(148,163,184); doc.setLineWidth(1.2);
+      for (let rIdx=0; rIdx<colCards.length-1; rIdx++){
+        const src = colCards[rIdx]; const dst = colCards[rIdx+1];
+        for (let i=0; i<src.length; i+=2){
+          const a = src[i]; const b = src[i+1]; const d = dst[Math.floor(i/2)]; if (!a || !d) continue;
+
+          const ar = a.getBoundingClientRect(); const dr = d.getBoundingClientRect();
+          const aMeasure = measured.get(a); const dMeasure = measured.get(d);
+          const ax = (ar.right - contentRect.left) + scrollX - 10; 
+          const dx = (dr.left - contentRect.left) + scrollX + 10; 
+          const ay = aMeasure ? ( (aMeasure.y) + (aMeasure.rectHPt/scale)/2 ) : ((ar.top - contentRect.top) + scrollY + ar.height/2);
+          const dy = dMeasure ? ( (dMeasure.y) + (dMeasure.rectHPt/scale)/2 ) : ((dr.top - contentRect.top) + scrollY + dr.height/2);
+          const draw = (x1,y1,x2,y2)=>{
+            doc.line(offsetX + toPt(px(x1)), offsetY + toPt(px(y1)), offsetX + toPt(px(x2)), offsetY + toPt(px(y2))); };
+          // straight connector
+          draw(ax, ay, dx, dy);
+          if (b){
+            const br = b.getBoundingClientRect();
+            const bx = (br.right - contentRect.left) + scrollX - 10; const by = (br.top - contentRect.top) + scrollY + br.height/2;
+            draw(bx, by, dx, dy);
+          }
+        }
+      }
+
+      doc.save('fixtureit_flowchart.pdf');
+      if (wasHidden){
+        el.viewFlow.classList.add('hidden');
+        el.viewFlow.setAttribute('style', prevInline);
+      }
+    }catch(e){ el.errors.textContent = 'Flowchart PDF export failed. ' + (e.message||e); }
   }
-  document.getElementById('btn-pdf').addEventListener('click', exportPDF);
-  el.btnPrint.addEventListener('click', ()=> window.print());
+  document.getElementById('btn-table-pdf').addEventListener('click', exportTablePDF);
+  // Toggle table menu
+  const tableMenu = document.getElementById('table-menu');
+  document.getElementById('btn-table-download').addEventListener('click', ()=>{
+    tableMenu.classList.toggle('hidden');
+  });
+  document.addEventListener('click', (e)=>{
+    const btn = document.getElementById('btn-table-download');
+    if (!tableMenu.contains(e.target) && e.target !== btn) tableMenu.classList.add('hidden');
+  });
+  // Export SVG of flowchart
+  // Download Flowchart as JPEG (from SVG)
+  document.getElementById('btn-flow-download').addEventListener('click', async ()=>{
+    if (!lastStructure.length){ el.errors.textContent='Generate a schedule first.'; return; }
+
+    // Ensure flow DOM is measurable even when flow view is hidden
+    const wasHidden = el.viewFlow.classList.contains('hidden');
+    const prevInline = el.viewFlow.getAttribute('style') || '';
+    if (wasHidden){
+      el.viewFlow.classList.remove('hidden');
+      el.viewFlow.style.position='absolute';
+      el.viewFlow.style.left='-10000px';
+      el.viewFlow.style.top='-10000px';
+      el.viewFlow.style.visibility='hidden';
+      renderFlowchart(lastStructure, lastRows, lastType);
+    }
+
+    const { svg, width, height } = buildFlowSvg();
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svg);
+    const svgBlob = new Blob([svgStr], { type:'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    await new Promise((res, rej)=>{ img.onload=res; img.onerror=rej; img.src=svgUrl; });
+    const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,width,height); ctx.drawImage(img,0,0);
+    URL.revokeObjectURL(svgUrl);
+    canvas.toBlob((blob)=>{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='fixtureit_flowchart.jpeg'; a.click(); URL.revokeObjectURL(url);
+    }, 'image/jpeg', 0.92);
+
+    if (wasHidden){
+      el.viewFlow.classList.add('hidden');
+      el.viewFlow.setAttribute('style', prevInline);
+    }
+  });
+  // removed Print button handler
   el.btnSave.addEventListener('click', ()=> saveState());
   el.btnLoad.addEventListener('click', ()=> { loadState(); updateTeamCount(); toggleSeeded(); });
 
